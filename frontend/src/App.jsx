@@ -2,47 +2,81 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster, toast } from 'react-hot-toast';
-import { FiCopy, FiUploadCloud, FiFileText, FiDownload, FiCheck, FiGithub } from 'react-icons/fi';
+import { FiCopy, FiUpload, FiFileText, FiDownload, FiCheck, FiX, FiRefreshCw, FiAlertTriangle, FiClock } from 'react-icons/fi';
 
-// Helper to get ID from URL path
 const getIdFromPath = () => window.location.pathname.substring(1);
 
+// --- ⏱️ COUNTDOWN COMPONENT ---
+const CountdownTimer = ({ expiresAt }) => {
+  const [timeLeft, setTimeLeft] = useState('');
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const diff = expiresAt - now;
+
+      if (diff <= 0) {
+        setTimeLeft('EXPIRED');
+        clearInterval(interval);
+        window.location.reload();
+      } else {
+        const minutes = Math.floor((diff / 1000 / 60) % 60);
+        const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+        const seconds = Math.floor((diff / 1000) % 60);
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        
+        let timeString = `${hours}h ${minutes}m ${seconds}s`;
+        if (days > 0) timeString = `${days}d ` + timeString;
+        
+        setTimeLeft(timeString);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [expiresAt]);
+
+  return <span className="font-mono text-[#FF4785]">{timeLeft}</span>;
+};
+
 function App() {
-  const [viewId, setViewId] = useState(getIdFromPath());
+  const [viewId] = useState(getIdFromPath());
   const [retrievedData, setRetrievedData] = useState(null);
   const [loading, setLoading] = useState(false);
   
-  // Upload State
+  // Inputs
   const [activeTab, setActiveTab] = useState('text');
   const [text, setText] = useState('');
   const [file, setFile] = useState(null);
   const [generatedLink, setGeneratedLink] = useState('');
+  const [expiration, setExpiration] = useState(1); // Default 60 mins
+  
+  const [shake, setShake] = useState(0); 
 
   useEffect(() => {
     if (viewId) {
-      const fetchData = async () => {
-        setLoading(true);
-        try {
-          const res = await axios.get(`http://localhost:3000/${viewId}`);
-          setRetrievedData(res.data);
-        } catch (err) {
-          toast.error(err.response?.status === 410 ? 'Link Expired!' : 'Link Not Found');
-          setTimeout(() => { window.location.href = '/'; }, 2000);
-        } finally {
-          setLoading(false);
-        }
-      };
-      fetchData();
+      setLoading(true);
+      axios.get(`http://localhost:3000/${viewId}`)
+        .then(res => setRetrievedData(res.data))
+        .catch(() => toast.error('Link not found or expired'))
+        .finally(() => setLoading(false));
     }
   }, [viewId]);
 
+  // 🔥 MORE INTENSE SHAKE HANDLER
+  const handleTextChange = (e) => {
+    setText(e.target.value);
+    // Increased range: -10px to 10px (was -2 to 2)
+    setShake(Math.random() * 20 - 10);
+    setTimeout(() => setShake(0), 50);
+  };
+
   const handleUpload = async (e) => {
     e.preventDefault();
-    if (!text && !file) return toast.error("Please add content to upload!");
-
-    const loadToast = toast.loading('Encrypting & Uploading...');
+    if (!text && !file) return toast.error("⚠️ EMPTY VAULT DETECTED");
+    
+    setLoading(true);
     const formData = new FormData();
     formData.append('type', activeTab);
+    formData.append('expiration', expiration);
     
     if (activeTab === 'text') formData.append('content', text);
     else formData.append('file', file);
@@ -52,197 +86,150 @@ function App() {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       setGeneratedLink(res.data.link);
-      toast.success('Secure Link Generated!', { id: loadToast });
-    } catch (err) {
-      toast.error('Upload Failed', { id: loadToast });
+      toast.success('🔒 VAULT SEALED');
+    } catch {
+      toast.error('❌ UPLOAD FAILED');
+    } finally {
+      setLoading(false);
     }
   };
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(generatedLink);
-    toast.success('Link Copied to Clipboard!');
+    toast.success('📋 COPIED');
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white font-sans selection:bg-purple-500 selection:text-white overflow-hidden relative">
-      <Toaster position="top-center" />
+    <div className="min-h-screen bg-[#FFFDF5] font-mono text-black p-4 flex flex-col items-center justify-center overflow-hidden relative selection:bg-[#A3E635]">
       
-      {/* Background Blobs */}
-      <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-purple-600 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob"></div>
-      <div className="absolute top-[-10%] right-[-10%] w-96 h-96 bg-blue-600 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-2000"></div>
-      <div className="absolute bottom-[-20%] left-[20%] w-96 h-96 bg-pink-600 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-4000"></div>
+      <Toaster 
+        toastOptions={{
+          style: {
+            border: '3px solid black',
+            boxShadow: '4px 4px 0px 0px black',
+            borderRadius: '0px',
+            background: 'white',
+            color: 'black',
+            fontWeight: 'bold',
+            fontFamily: 'monospace',
+          },
+        }}
+      />
 
-      <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-4">
+      <motion.div initial={{ y: -50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="mb-10 text-center relative z-10">
+        <h1 className="text-7xl font-black italic tracking-tighter" style={{ textShadow: '4px 4px 0px #000' }}>LINK_BOLT</h1>
+      </motion.div>
+
+      <motion.div 
+        // Increased Rotation multiplier to make it feel heavier
+        animate={{ x: shake, rotate: shake / 2 }} 
+        className="w-full max-w-xl bg-white border-4 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] p-8 relative z-10"
+      >
         
-        {/* Header */}
-        <motion.div 
-          initial={{ y: -50, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          className="text-center mb-8"
-        >
-          <h1 className="text-5xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 tracking-tight cursor-default">
-            LinkVault
-          </h1>
-          <p className="text-gray-400 mt-2 text-lg">Secure, Ephemeral, Simple.</p>
-        </motion.div>
-
-        {/* Main Card */}
-        <motion.div 
-          layout
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="w-full max-w-lg bg-gray-800/60 backdrop-blur-xl border border-gray-700/50 rounded-2xl shadow-2xl overflow-hidden"
-        >
-          
-          {/* --- VIEW CONTENT MODE --- */}
-          {viewId && retrievedData ? (
-            <div className="p-8">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                  <span className="text-green-400"><FiCheck /></span> Secure Content
-                </h2>
-                <button onClick={() => window.location.href='/'} className="text-sm text-gray-400 hover:text-white transition">New Upload</button>
-              </div>
-
-              {retrievedData.type === 'text' ? (
-                <div className="bg-gray-900/80 p-4 rounded-xl border border-gray-700 font-mono text-sm text-gray-300 break-words whitespace-pre-wrap max-h-96 overflow-auto shadow-inner">
-                  {retrievedData.content}
-                </div>
-              ) : (
-                <div className="text-center py-10 bg-gray-900/50 rounded-xl border border-dashed border-gray-600">
-                  <div className="text-6xl mb-4 mx-auto w-fit text-blue-400"><FiFileText /></div>
-                  <p className="text-lg font-medium text-white mb-2">{retrievedData.filename}</p>
-                  <p className="text-sm text-gray-500 mb-6">Ready for download</p>
-                  <a 
-                    href={`http://localhost:3000/download/${viewId}`}
-                    className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold transition shadow-lg shadow-blue-600/20"
-                  >
-                    <FiDownload /> Download Now
-                  </a>
-                </div>
-              )}
+        {/* --- VIEW MODE --- */}
+        {viewId && retrievedData ? (
+          <div>
+            <div className="border-b-4 border-black pb-4 mb-6 flex justify-between items-center">
+              <h2 className="text-2xl font-black uppercase flex items-center gap-2">
+                <FiCheck className="bg-green-400 border-2 border-black rounded-full p-1" /> DATA RETRIEVED
+              </h2>
+              <a href="/" className="text-xs font-bold hover:text-red-500">CLOSE X</a>
             </div>
-          ) : viewId && loading ? (
-             <div className="p-12 text-center">
-                <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p className="text-gray-400 animate-pulse">Decrypting vault...</p>
-             </div>
-          ) : !generatedLink ? (
-            /* --- CREATE UPLOAD MODE --- */
-            <div className="p-1">
-              {/* Custom Tab Switcher */}
-              <div className="flex bg-gray-900/50 p-1 m-4 rounded-xl">
-                {['text', 'file'].map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => { setActiveTab(tab); setFile(null); setText(''); }}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 relative ${
-                      activeTab === tab ? 'text-white' : 'text-gray-400 hover:text-gray-200'
-                    }`}
-                  >
-                    {activeTab === tab && (
-                      <motion.div 
-                        layoutId="activeTab" 
-                        className="absolute inset-0 bg-gray-700 shadow-sm rounded-lg"
-                        style={{ zIndex: -1 }}
-                      />
-                    )}
-                    {tab === 'text' ? <FiFileText /> : <FiUploadCloud />} 
-                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                  </button>
-                ))}
-              </div>
 
-              <form onSubmit={handleUpload} className="px-8 pb-8 pt-2 space-y-6">
-                <AnimatePresence mode='wait'>
-                  {activeTab === 'text' ? (
-                    <motion.div 
-                      key="text-input"
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 20 }}
-                    >
-                      <textarea
-                        className="w-full h-40 bg-gray-900/50 border border-gray-600 rounded-xl p-4 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition resize-none"
-                        placeholder="Paste your secret message, API keys, or sensitive data here..."
-                        value={text}
-                        onChange={(e) => setText(e.target.value)}
-                      />
-                    </motion.div>
-                  ) : (
-                    <motion.div 
-                      key="file-input"
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -20 }}
-                    >
-                      <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-gray-600 border-dashed rounded-xl cursor-pointer bg-gray-900/30 hover:bg-gray-800/50 hover:border-purple-500 transition group">
-                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                          <FiUploadCloud className="w-10 h-10 text-gray-400 group-hover:text-purple-400 transition mb-3" />
-                          <p className="text-sm text-gray-400 group-hover:text-gray-300">
-                            {file ? <span className="text-purple-400 font-semibold">{file.name}</span> : "Click to upload or drag and drop"}
-                          </p>
-                        </div>
-                        <input type="file" className="hidden" onChange={(e) => setFile(e.target.files[0])} />
-                      </label>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                <button 
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-500 hover:via-purple-500 hover:to-pink-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-purple-500/30 transform transition hover:-translate-y-0.5 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Create Secure Link
-                </button>
-              </form>
+            {/* COUNTDOWN TIMER */}
+            <div className="bg-black text-white p-2 mb-6 text-center font-bold border-2 border-black flex justify-center items-center gap-2">
+              <FiClock className="text-[#FF4785]" />
+              <span>SELF DESTRUCT IN:</span>
+              <CountdownTimer expiresAt={retrievedData.expiresAt} />
             </div>
-          ) : (
-            /* --- RESULT MODE --- */
-            <div className="p-8 text-center">
-              <motion.div 
-                initial={{ scale: 0 }} 
-                animate={{ scale: 1 }}
-                className="w-16 h-16 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center mx-auto mb-4"
-              >
-                <FiCheck className="w-8 h-8" />
-              </motion.div>
-              
-              <h3 className="text-xl font-bold text-white mb-2">Vault Created!</h3>
-              <p className="text-gray-400 text-sm mb-6">This link will expire in 24 hours.</p>
-
-              <div className="flex items-center gap-2 bg-gray-900 border border-gray-700 rounded-lg p-2 mb-6">
-                <input 
-                  type="text" 
-                  readOnly 
-                  value={generatedLink} 
-                  className="bg-transparent flex-1 text-gray-300 text-sm outline-none px-2"
-                />
-                <button 
-                  onClick={copyToClipboard}
-                  className="p-2 bg-gray-800 hover:bg-gray-700 text-white rounded-md transition"
-                >
-                  <FiCopy />
-                </button>
+            
+            {retrievedData.type === 'text' ? (
+               <div className="bg-gray-100 border-4 border-black p-6 text-lg font-bold min-h-[200px] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] overflow-auto break-words whitespace-pre-wrap">
+                 {retrievedData.content}
+               </div>
+            ) : (
+              <div className="text-center py-12 bg-[#E0E7FF] border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                <div className="text-6xl mb-4 mx-auto w-fit">📦</div>
+                <p className="text-xl font-black mb-6 uppercase px-4 truncate">{retrievedData.filename}</p>
+                <a href={`http://localhost:3000/download/${viewId}`} className="inline-flex items-center gap-2 bg-[#FFDE00] border-4 border-black px-6 py-3 text-lg font-black uppercase hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_black] shadow-[6px_6px_0px_0px_black] transition-all">
+                  <FiDownload /> Download File
+                </a>
               </div>
-
-              <button 
-                onClick={() => { setGeneratedLink(''); setText(''); setFile(null); }}
-                className="text-gray-400 hover:text-white text-sm underline transition"
-              >
-                Upload another item
+            )}
+            <a href="/" className="block text-center mt-6 font-bold underline hover:text-[#FF4785]">SECURE ANOTHER ITEM</a>
+          </div>
+        ) : !generatedLink ? (
+          /* --- CREATE MODE --- */
+          <form onSubmit={handleUpload}>
+            <div className="flex border-b-4 border-black mb-6 pb-2 gap-4">
+              <button type="button" onClick={() => setActiveTab('text')} className={`flex-1 text-lg font-black uppercase transition-colors flex items-center justify-center gap-2 ${activeTab === 'text' ? 'text-[#FF4785]' : 'text-gray-400'}`}>
+                <FiFileText /> Text
+              </button>
+              <div className="w-[2px] bg-black"></div>
+              <button type="button" onClick={() => setActiveTab('file')} className={`flex-1 text-lg font-black uppercase transition-colors flex items-center justify-center gap-2 ${activeTab === 'file' ? 'text-[#22D3EE]' : 'text-gray-400'}`}>
+                <FiUpload /> File
               </button>
             </div>
-          )}
-        </motion.div>
 
-        {/* Footer */}
-        <div className="mt-8 text-gray-500 text-sm flex items-center gap-2">
-          <FiGithub /> 
-          <a href="#" className="hover:text-gray-300 transition">Open Source Project</a>
-        </div>
-      </div>
+            {/* MANUAL TIMER INPUT */}
+            <div className="mb-4">
+              <label className="block font-bold text-xs uppercase mb-1">Self-Destruct Timer:</label>
+              <div className="flex items-center border-4 border-black shadow-[4px_4px_0px_0px_black]">
+                <input 
+                  type="number" 
+                  min="1"
+                  value={expiration} 
+                  onChange={(e) => setExpiration(e.target.value)}
+                  className="w-full p-3 font-black text-xl bg-white focus:outline-none"
+                  placeholder="60"
+                />
+                <div className="bg-black text-white px-4 py-3 font-bold">MINS</div>
+              </div>
+            </div>
+
+            <div className="mb-6 h-40 relative">
+                <AnimatePresence mode="wait">
+                    {activeTab === 'text' ? (
+                        <motion.div key="text" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
+                            <textarea className="w-full h-full border-4 border-black p-4 text-lg font-bold focus:outline-none focus:bg-gray-50 resize-none placeholder-gray-400" placeholder="TYPE SECRET INFO..." value={text} onChange={handleTextChange} />
+                        </motion.div>
+                    ) : (
+                        <motion.div key="file" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
+                            <label className="h-full flex flex-col items-center justify-center border-4 border-dashed border-black bg-gray-50 hover:bg-[#F0FDFA] cursor-pointer group transition-colors relative overflow-hidden">
+                              <FiUpload className="text-5xl mb-3 group-hover:scale-110 transition-transform duration-200" />
+                              <span className="font-black uppercase text-lg group-hover:underline">{file ? file.name : "SELECT FILE"}</span>
+                              <input type="file" className="hidden" onChange={(e) => setFile(e.target.files[0])} />
+                            </label>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
+
+            <button type="submit" disabled={loading} className="w-full bg-black text-white border-4 border-black py-4 text-xl font-black uppercase shadow-[8px_8px_0px_0px_#FF4785] hover:shadow-[4px_4px_0px_0px_#FF4785] hover:translate-x-[4px] hover:translate-y-[4px] active:shadow-none active:translate-x-[8px] active:translate-y-[8px] transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+              {loading ? <FiRefreshCw className="animate-spin" /> : '🔒 ENCRYPT & LOCK'}
+            </button>
+          </form>
+        ) : (
+          /* --- RESULT MODE --- */
+          <div className="text-center py-6">
+            <div className="inline-block p-4 border-4 border-black rounded-full mb-6 bg-[#A3E635] shadow-[4px_4px_0px_0px_black]">
+              <FiCheck className="text-4xl" />
+            </div>
+            <h3 className="text-4xl font-black uppercase mb-2">VAULT SEALED</h3>
+            <p className="text-sm font-bold bg-black text-white inline-block px-2 py-1 mb-8 transform -rotate-1">
+              Valid for {expiration} Minutes
+            </p>
+            <div className="flex bg-gray-100 border-4 border-black p-2 gap-2 mb-8">
+              <input readOnly value={generatedLink} className="bg-transparent border-none text-black w-full font-mono font-bold text-sm outline-none px-2" />
+              <button onClick={copyToClipboard} className="bg-black text-white border-2 border-black px-4 font-bold hover:bg-white hover:text-black transition-colors">COPY</button>
+            </div>
+            <button onClick={() => window.location.reload()} className="text-gray-400 font-bold hover:text-black hover:underline flex items-center justify-center gap-2 mx-auto">
+                <FiRefreshCw /> CREATE NEW TRANSFER
+            </button>
+          </div>
+        )}
+      </motion.div>
+      <div className="mt-12 text-xs font-bold text-gray-400"><span className="flex items-center gap-1"><FiAlertTriangle /> DO NOT SHARE LINKS PUBLICLY</span></div>
     </div>
   );
 }
