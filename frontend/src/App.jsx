@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster, toast } from 'react-hot-toast';
-import { FiCopy, FiUpload, FiFileText, FiDownload, FiCheck, FiX, FiRefreshCw, FiAlertTriangle, FiClock } from 'react-icons/fi';
+import { FiCopy, FiUpload, FiFileText, FiDownload, FiCheck, FiX, FiRefreshCw, FiAlertTriangle, FiClock, FiLock, FiUnlock } from 'react-icons/fi';
 
 const getIdFromPath = () => window.location.pathname.substring(1);
 
@@ -42,6 +42,12 @@ function App() {
   const [retrievedData, setRetrievedData] = useState(null);
   const [loading, setLoading] = useState(false);
   
+  // --- PASSWORD STATES ---
+  const [isProtected, setIsProtected] = useState(false);
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [inputPassword, setInputPassword] = useState(''); // For unlocking
+  const [uploadPassword, setUploadPassword] = useState(''); // For creating
+  
   // Inputs
   const [activeTab, setActiveTab] = useState('text');
   const [text, setText] = useState('');
@@ -51,20 +57,57 @@ function App() {
   
   const [shake, setShake] = useState(0); 
 
+  // --- INITIAL CHECK ---
   useEffect(() => {
     if (viewId) {
       setLoading(true);
-      axios.get(`http://localhost:3000/${viewId}`)
-        .then(res => setRetrievedData(res.data))
-        .catch(() => toast.error('Link not found or expired'))
-        .finally(() => setLoading(false));
+      // First, check if the link exists and if it has a password
+      axios.get(`http://localhost:3000/check/${viewId}`)
+        .then(res => {
+          if (res.data.isProtected) {
+            setIsProtected(true);
+            // We store the metadata (expiresAt, type) even if locked
+            setRetrievedData(res.data);
+            setLoading(false);
+          } else {
+             // Not protected? Fetch full content immediately
+             fetchContent(); 
+          }
+        })
+        .catch(() => {
+            toast.error('Link not found or expired');
+            setLoading(false);
+        });
     }
   }, [viewId]);
 
-  // 🔥 MORE INTENSE SHAKE HANDLER
+  // --- FETCH CONTENT (UNLOCK) ---
+  const fetchContent = (pwd = null) => {
+    // If we are manually unlocking, set loading
+    if (pwd) setLoading(true);
+
+    axios.post(`http://localhost:3000/retrieve/${viewId}`, { password: pwd })
+      .then(res => {
+          setRetrievedData(res.data);
+          setIsUnlocked(true);
+          toast.success("🔓 VAULT UNLOCKED");
+      })
+      .catch(() => {
+          toast.error('❌ INCORRECT PASSWORD');
+          setShake(Math.random() * 20 - 10);
+          setTimeout(() => setShake(0), 200);
+      })
+      .finally(() => setLoading(false));
+  };
+
+  const handleUnlock = (e) => {
+      e.preventDefault();
+      fetchContent(inputPassword);
+  };
+
+  // 🔥 SHAKE HANDLER
   const handleTextChange = (e) => {
     setText(e.target.value);
-    // Increased range: -10px to 10px (was -2 to 2)
     setShake(Math.random() * 20 - 10);
     setTimeout(() => setShake(0), 50);
   };
@@ -77,6 +120,8 @@ function App() {
     const formData = new FormData();
     formData.append('type', activeTab);
     formData.append('expiration', expiration);
+    
+    if (uploadPassword) formData.append('password', uploadPassword);
     
     if (activeTab === 'text') formData.append('content', text);
     else formData.append('file', file);
@@ -121,17 +166,41 @@ function App() {
       </motion.div>
 
       <motion.div 
-        // Increased Rotation multiplier to make it feel heavier
         animate={{ x: shake, rotate: shake / 2 }} 
         className="w-full max-w-xl bg-white border-4 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] p-8 relative z-10"
       >
         
-        {/* --- VIEW MODE --- */}
-        {viewId && retrievedData ? (
+        {/* --- 🔒 PASSWORD LOCK SCREEN --- */}
+        {viewId && isProtected && !isUnlocked ? (
+           <div className="text-center">
+             <div className="inline-block p-4 border-4 border-black rounded-full mb-6 bg-red-500 text-white shadow-[4px_4px_0px_0px_black]">
+                <FiLock className="text-4xl" />
+             </div>
+             <h2 className="text-3xl font-black uppercase mb-2">RESTRICTED ACCESS</h2>
+             <p className="font-bold mb-6 text-gray-500">THIS LINK IS PASSWORD PROTECTED</p>
+
+             <form onSubmit={handleUnlock}>
+                <input 
+                  type="password" 
+                  placeholder="ENTER PASSWORD" 
+                  autoFocus
+                  className="w-full border-4 border-black p-4 text-center font-black text-xl mb-4 focus:outline-none focus:bg-gray-100 placeholder-gray-300"
+                  value={inputPassword}
+                  onChange={e => setInputPassword(e.target.value)}
+                />
+                <button type="submit" disabled={loading} className="w-full bg-black text-white border-4 border-black py-4 text-xl font-black uppercase shadow-[8px_8px_0px_0px_#FF4785] hover:shadow-[4px_4px_0px_0px_#FF4785] hover:translate-x-[2px] hover:translate-y-[2px] active:translate-x-[6px] active:translate-y-[6px] transition-all disabled:opacity-50">
+                   {loading ? <FiRefreshCw className="animate-spin inline" /> : 'UNLOCK VAULT'}
+                </button>
+             </form>
+           </div>
+
+        /* --- 👁️ VIEW CONTENT MODE --- */
+        ) : viewId && retrievedData ? (
           <div>
             <div className="border-b-4 border-black pb-4 mb-6 flex justify-between items-center">
               <h2 className="text-2xl font-black uppercase flex items-center gap-2">
-                <FiCheck className="bg-green-400 border-2 border-black rounded-full p-1" /> DATA RETRIEVED
+                <FiCheck className="bg-green-400 border-2 border-black rounded-full p-1" /> 
+                {isProtected ? 'UNLOCKED' : 'DATA RETRIEVED'}
               </h2>
               <a href="/" className="text-xs font-bold hover:text-red-500">CLOSE X</a>
             </div>
@@ -158,8 +227,9 @@ function App() {
             )}
             <a href="/" className="block text-center mt-6 font-bold underline hover:text-[#FF4785]">SECURE ANOTHER ITEM</a>
           </div>
+        
+        /* --- ➕ CREATE MODE --- */
         ) : !generatedLink ? (
-          /* --- CREATE MODE --- */
           <form onSubmit={handleUpload}>
             <div className="flex border-b-4 border-black mb-6 pb-2 gap-4">
               <button type="button" onClick={() => setActiveTab('text')} className={`flex-1 text-lg font-black uppercase transition-colors flex items-center justify-center gap-2 ${activeTab === 'text' ? 'text-[#FF4785]' : 'text-gray-400'}`}>
@@ -171,22 +241,38 @@ function App() {
               </button>
             </div>
 
-            {/* MANUAL TIMER INPUT */}
-            <div className="mb-4">
-              <label className="block font-bold text-xs uppercase mb-1">Self-Destruct Timer:</label>
-              <div className="flex items-center border-4 border-black shadow-[4px_4px_0px_0px_black]">
-                <input 
-                  type="number" 
-                  min="1"
-                  value={expiration} 
-                  onChange={(e) => setExpiration(e.target.value)}
-                  className="w-full p-3 font-black text-xl bg-white focus:outline-none"
-                  placeholder="60"
-                />
-                <div className="bg-black text-white px-4 py-3 font-bold">MINS</div>
-              </div>
+            {/* OPTIONS GRID */}
+            <div className="grid grid-cols-2 gap-4 mb-4">
+                {/* 1. TIMER INPUT */}
+                <div>
+                  <label className="block font-bold text-xs uppercase mb-1">Timer (Mins):</label>
+                  <div className="flex items-center border-4 border-black shadow-[4px_4px_0px_0px_black]">
+                    <input 
+                      type="number" 
+                      min="1"
+                      value={expiration} 
+                      onChange={(e) => setExpiration(e.target.value)}
+                      className="w-full p-3 font-black text-xl bg-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* 2. PASSWORD INPUT (NEW) */}
+                <div>
+                  <label className="block font-bold text-xs uppercase mb-1">Pass (Optional):</label>
+                  <div className="flex items-center border-4 border-black shadow-[4px_4px_0px_0px_black]">
+                    <input 
+                      type="password" 
+                      value={uploadPassword} 
+                      onChange={(e) => setUploadPassword(e.target.value)}
+                      className="w-full p-3 font-black text-xl bg-white focus:outline-none placeholder-gray-300"
+                      placeholder="****"
+                    />
+                  </div>
+                </div>
             </div>
 
+            {/* CONTENT AREA */}
             <div className="mb-6 h-40 relative">
                 <AnimatePresence mode="wait">
                     {activeTab === 'text' ? (
@@ -209,8 +295,9 @@ function App() {
               {loading ? <FiRefreshCw className="animate-spin" /> : '🔒 ENCRYPT & LOCK'}
             </button>
           </form>
+        
+        /* --- ✅ SUCCESS MODE --- */
         ) : (
-          /* --- RESULT MODE --- */
           <div className="text-center py-6">
             <div className="inline-block p-4 border-4 border-black rounded-full mb-6 bg-[#A3E635] shadow-[4px_4px_0px_0px_black]">
               <FiCheck className="text-4xl" />
