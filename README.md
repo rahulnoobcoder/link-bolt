@@ -35,12 +35,16 @@ npm install
 ```
 
 **2. Configuration**
-Create a .env file in the backend/ directory:
+Create a .env file in the backend/ directory:(compulsory)
 ```
 PORT=5000
-JWT_SECRET=your_super_secret_key_here
-UPLOAD_DIR=./uploads
+JWT_SECRET=YourSuperSecretKey
 DB_PATH=./data/linkvault.db
+UPLOAD_DIR=./uploads
+MAX_FILE_SIZE=52428800
+DEFAULT_EXPIRY_MINUTES=10
+FRONTEND_URL=http://localhost:5173
+
 ```
 
 **3. Running the Application**
@@ -75,4 +79,4 @@ npm run dev
 
 - **Local Storage:** Files are stored locally (not suitable for serverless platforms like Vercel without S3).
 - **Scalability:** SQLite is great for single-instance; PostgreSQL recommended for massive scale.
-- **Rate Limiting:** Basic implementation included.
+- **Rate Limiting:** Basic implementation included. 
